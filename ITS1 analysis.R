@@ -7,118 +7,6 @@ library(ggplot2)
 library(reshape2)
 library(lubridate)
 library(phyloseq)
-library(viridis)
-
-
-# read in files:
-# I constructed a phyloseq object from paired-end reads in a previous
-#  script and saved it as a .qza object
-# ok, the svs files have already undergone filtering in QIIME2, so I've
-#   commented out the lines that are involved with these steps in the following
-#   R code
-svs <- read_qza("ITS1 combined/its1-combined-filtered-itsx-fungi-mothur.qza")
-taxonomy <- read_qza("ITS1 combined/taxonomy-its1-combined-mothur.qza")
-taxonomy <- taxonomy$data
-
-# manually parse taxonomy:
-tax_sep <- taxonomy %>% separate(Taxon, c("Kingdom", "Phylum", "Class", "Order", 
-                                          "Family", "Genus", "Species"), sep = "([;])")
-# column names to allow for iteration:
-to_gsub <- c("Kingdom", "Phylum", "Class", "Order", 
-             "Family", "Genus", "Species")
-
-# remove "k__" from beginning of columns:
-tax_sep[to_gsub] <- lapply(tax_sep[to_gsub], gsub, 
-                           pattern = ".\\_\\_", replacement = "")
-# remove "unidentified" and replace with empty string (<NA>):
-tax_sep[to_gsub] <- lapply(tax_sep[to_gsub], gsub, 
-                           pattern = "unidentified", replacement = "")
-
-metadata <- read.table("ITS1_combined_metadata_2.txt", sep = "\t", header = TRUE)
-#names(metadata)[1] <- "SampleID"
-metadata$Date <- as.Date(parse_date_time(metadata$Date, orders = 'dmy'))
-
-# add in week and month columns as well:
-metadata$week <- as.factor(week(metadata$Date))
-metadata$month <- as.factor(month(metadata$Date))
-metadata <- metadata %>% 
-  mutate(biweekly = case_when(is.na(week) | week == "25" ~ "NA",       # not sure why I need to specify this!!!
-                              week == "26" | week == "27" ~ "26-27",
-                              week == "28" | week == "29" ~ "28-29",
-                              week == "30" | week == "31" ~ "30-31",
-                              week == "32" | week == "33" ~ "32-33",
-                              week == "34" | week == "35" ~ "34-35"))
-
-# reorder Location info:
-#metadata$Location <- factor(metadata$Location,
-#                            levels = c("Lethbridge", "Brooks",
-#                                       "Lacombe", "Beaverlodge",
-#                                       "Mock", "Mock_diluted", "RodBlank",
-#                                       "WaterBlank"))
-
-# add in column that identifies a sample as a negative control or not:
-#unique(metadata$Crop_Type)
-#metadata$Sample_or_Control <- ifelse(metadata$Crop_Type == "WaterBlank" |
-#                                       metadata$Crop_Type == "RodBlank", "Control", "Sample")
-
-# select only ITS1 samples in metadata with reads > 0:
-#metadata <- filter(metadata, Region_Sequenced == "ITS1" & 
-#                     Number.of.Reads.NovaSeq > 0)
-
-# some new approach: make a phyloseq object first:
-#  for more info see the section on beta diversity analysis:
-otus <- as.matrix(svs$data)
-# # decostand divides by the margin total (1 = rows, 2 = columns); in this case
-# #   we have OTUs as columns, which matches with the default
-# otus_hellinger <- decostand(otus, method = "hellinger")
-
-# so there are some inconsistencies between my taxon table and the OTU table 
-#    (likely due to trying to integrate mothur output with the QIIME workflow), 
-#    so I need to subset the unique IDs in the taxonomic file to ONLY the ones
-#    that are in the OTU table:
-common_ids <- intersect(rownames(otus), tax_sep[,1])
-taxa_sub <- filter(tax_sep, Feature.ID %in% common_ids)
-# confirm this worked:
-setequal(rownames(otus), taxa_sub[,1])
-
-# create matrix of taxonomy:
-taxa <- as.matrix(taxa_sub)
-# must move FeatureID column to row name and remove that column:
-rownames(taxa) <- taxa[,1]
-taxa2 <- as.matrix(taxa[,-1])
-
-# give metadata rownames:
-### BUT, have some duplicated samples so need to remove them before doing ANOVA:
-#duplicates <- metadata[is.na(metadata$Date.x) & 
-#                         !(is.na(metadata$Sampler_Type)),]
-#metadata <- metadata[-as.numeric(rownames(duplicates)),]
-rownames(metadata) <- metadata$SampleID
-
-# # also want to color by field vs control on the first bar chart:
-metadata$Sample_or_Control <- ifelse(metadata$PosNeg == "Pos" | is.na(metadata$PosNeg),
-                                 "Sample", "Control")
-# # reorder factors so the legend plots look nicer:
-# metadata$Sample_Type <- as.factor(metadata$Sample_Type)
-# metadata$Sample_Type <- relevel(metadata$Sample_Type, "Field")
-
-
-# meta <- metadata %>% select(-SampleID)
-# transform to phyloseq objects:
-OTU <- otu_table(otus, taxa_are_rows = TRUE)
-TAX <- tax_table(taxa2)
-samples <- sample_data(metadata)
-
-pseq_alpha <- phyloseq(OTU, TAX, samples)
-pseq_its1 <- phyloseq(OTU, TAX, samples)
-
-burk2019_its1 <- subset_samples(pseq_alpha, Year == 2019 & Sampler_Type == "Burkard")
-roto_its1 <- subset_samples(pseq_alpha, Year == 2019 & Sampler_Type == "Rotorod")
-burk2021_its1 <- subset_samples(pseq_alpha, Year == 2021 & Sampler_Type == "Burkard")
-
-saveRDS(pseq_alpha, "Phyloseq objects/its1_all_raw.rds")
-saveRDS(burk2019_its1, "Phyloseq objects/burk2019_its1_raw.rds")
-saveRDS(roto_its1, "Phyloseq objects/roto_its1_raw.rds")
-saveRDS(burk2021_its1, "Phyloseq objects/burk2021_its1_raw.rds")
 
 
 # # Use 'decontam' package to remove potential contaminants
@@ -235,12 +123,12 @@ sample_data(pseq_rare)$SampleType <- factor(sample_data(pseq_rare)$SampleType,
                                                        "Burkard21", "Control"))
 
 sample_data(pseq_rare)$GenericID <- factor(sample_data(pseq_rare)$GenericID,
-                                            levels = c("Lethbridge", "Brooks",
-                                                       "Lacombe", "Beaverlodge",
-                                                       "Bean", "Canola",
-                                                       "Potato", "Wheat",
-                                                       "Mock", "WaterBlank",
-                                                       "RodBlank", "FieldControl"))
+                                           levels = c("Lethbridge", "Brooks",
+                                                      "Lacombe", "Beaverlodge",
+                                                      "Bean", "Canola",
+                                                      "Potato", "Wheat",
+                                                      "Mock", "WaterBlank",
+                                                      "RodBlank", "FieldControl"))
 
 # remove 'ascospore' from controls prior to plotting
 pseq_rare_filt <- subset_samples(pseq_rare, !(GenericID == "Ascospore"))
@@ -336,7 +224,7 @@ alpha_metrics <- estimate_richness(roto_rare)
 # merge with original data file:
 alpha_metrics$SampleID <- rownames(alpha_metrics)
 roto_meta <- merge(roto_meta, alpha_metrics, by = "SampleID") 
- # by = 0 indicates use rownames
+# by = 0 indicates use rownames
 
 # 2) add weather variables:
 weather <- read_csv("Rotorod weather data 2019.csv")
@@ -347,7 +235,7 @@ roto_meta_filt <- filter(roto_meta, !is.na(Date)) %>%
 weather$week <- factor(weather$week)
 
 roto_all <- merge(roto_meta_filt, weather, by = c("Location", "Date", "week", "biweekly",
-                                         "month"))
+                                                  "month"))
 
 write.csv(roto_all, "Rotorod ITS1 all metadata.csv", row.names = FALSE)
 
@@ -355,8 +243,8 @@ write.csv(roto_all, "Rotorod ITS1 all metadata.csv", row.names = FALSE)
 # summarize by week:
 alpha_biweekly <- roto_all %>% group_by(Location, week) %>% 
   dplyr::summarise(meanShannon = mean(Shannon, na.rm = T), 
-            sdShannon = sd(Shannon, na.rm = T),
-            number = n()) %>% 
+                   sdShannon = sd(Shannon, na.rm = T),
+                   number = n()) %>% 
   ungroup()
 
 # plot alpha metrics - remove week 25, since it has few data points:
@@ -379,7 +267,7 @@ alpha_biweekly %>% #filter(., !(biweekly == "NA")) %>%
   geom_errorbar(aes(ymin = meanShannon - sdShannon,
                     ymax = meanShannon + sdShannon,
                     width = 0.2)
-                ) +
+  ) +
   facet_grid(Location ~.) +
   labs(x = "Week (2019)",
        y = "Shannon diversity index") +
@@ -402,7 +290,7 @@ roto_summary <- roto_all %>%
   group_by(Location, week) %>% 
   summarise(meanShannon = mean(Shannon, na.rm = T), no = n()) %>% 
   ungroup()
-  
+
 # include only data of interest for modeling:
 to_test <- select(roto_summary, meanShannon, Location, week) %>% 
   mutate(Location = as.factor(Location)) %>% 
@@ -528,8 +416,8 @@ to_corr_location <- select(roto_all_filt, Location, Shannon, Precip, MaxT, MinT,
 
 result <- lapply(split(to_corr_location, to_corr_location[, 1]), 
                  function(x) {
-      rcorr(as.matrix(x[,2:9]), type="pearson")
-    })
+                   rcorr(as.matrix(x[,2:9]), type="pearson")
+                 })
 
 # ok, so strength and significance of weather associations depends on Location:
 # Lethbridge - negatively associated with MaxRH and MeanRH
@@ -541,7 +429,7 @@ result <- lapply(split(to_corr_location, to_corr_location[, 1]),
 
 # analyze relationships statistically:
 lm.alpha1 <- glm(Shannon ~ MaxT + MinRH + Precip + Location #+ 
-                  #MaxT*Location + MinRH*Location + Precip*Location
+                 #MaxT*Location + MinRH*Location + Precip*Location
                  , data = roto_all_filt)
 Anova(lm.alpha1, type = "III")
 summary(lm.alpha1)
@@ -571,7 +459,7 @@ summary(forwards)
 
 bothways <- step(nullmod, 
                  list(lower=formula(nullmod),upper=formula(fullmod)),
-                  direction="both",trace=0)
+                 direction="both",trace=0)
 formula(bothways)
 summary(bothways)
 
@@ -647,8 +535,8 @@ burk_summary <- burk_meta %>%
 #   select(., Crop_Type, Shannon, biweekly)
 
 to_test_2019 <- burk_summary %>% 
-   filter(., Year == "2019") %>%
-    select(., Crop_Type, meanShannon, biweekly)
+  filter(., Year == "2019") %>%
+  select(., Crop_Type, meanShannon, biweekly)
 
 to_test_2021 <- burk_summary %>% 
   filter(., Year == "2021") %>%
@@ -672,9 +560,9 @@ get_anova_table(res.aov)
 
 
 res.aov.2021 <- anova_test(data = to_test_2021, 
-                      dv = meanShannon, 
-                      wid = Crop_Type,
-                      within = biweekly)
+                           dv = meanShannon, 
+                           wid = Crop_Type,
+                           within = biweekly)
 
 get_anova_table(res.aov.2021)
 #
@@ -688,8 +576,8 @@ get_anova_table(res.aov.2021)
 ############ REPEAT FOR CROP TYPE ANALYSIS ----------
 burk19_rare <- readRDS("Phyloseq objects/burk2019_its1_rare.rds")
 sample_data(burk19_rare)$Crop_Type <- factor(sample_data(burk19_rare)$Crop_Type, 
-                                          levels = c("Bean", "Canola",
-                                                     "Potato", "Wheat"))
+                                             levels = c("Bean", "Canola",
+                                                        "Potato", "Wheat"))
 # get metadata file
 burk19_meta <- sample_data(burk19_rare) %>% 
   as_tibble()
