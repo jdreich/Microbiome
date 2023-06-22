@@ -23,7 +23,7 @@ colors <- c("#fd8c6e", "#78b4c6", "#7fca76", "#ac8bf8")
 #                                                               sample_data(pseq_rare)$Location,
 #                                                               sample_data(pseq_rare)$Crop_Type))
 
-pseq_rare <- readRDS("its1_all_rare.rds")
+pseq_rare <- readRDS("outputs/its1_all_rare.rds")
 
 # reorder factors:
 sample_data(pseq_rare)$SampleType <- factor(sample_data(pseq_rare)$SampleType,

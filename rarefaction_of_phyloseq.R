@@ -27,35 +27,37 @@ library(phyloseq)
 #   nevertheless, it is still common practice and provides ONE approach for 
 #   comparing samples that come from differing read depths.
 
+pseq_all <- readRDS("outputs/its1_all_raw.rds")
+
 # First, let's see what the read depths of each sample are:
-sample_counts <- data.frame(sample_sums(pseq_alpha))
+sample_counts <- data.frame(sample_sums(pseq_all))
 sample_counts <- rownames_to_column(sample_counts)
 
 # make a histogram of read counts
-ggplot(data = sample_counts, aes(sample_sums.pseq_alpha.)) +
+ggplot(data = sample_counts, aes(sample_sums.pseq_all.)) +
   geom_histogram()
 
 # We can see that there are a fair number of samples with reads < 250,000.
 # We can also look at the data frame itself and see what the distribution 
 # of samples is like:
-head(sample_counts[order(sample_counts$sample_sums.pseq_alpha.),], 20)
+head(sample_counts[order(sample_counts$sample_sums.pseq_all.),], 20)
 
 # for now, we'll be conservative and keep samples with more than 15,000 reads:
-to_keep <- filter(sample_counts, sample_sums.pseq_alpha. > 15000)$rowname
+to_keep <- filter(sample_counts, sample_sums.pseq_all. > 15000)$rowname
 
 # and then filter the phyloseq object to include only these samples:
-pseq_alpha_filt <- subset_samples(pseq_alpha, SampleID %in% to_keep)
+pseq_all_filt <- subset_samples(pseq_all, SampleID %in% to_keep)
 
 # Next, rarefy:
 # N.B.: this function rarefies to the depth of the lowest sample; samples WITH
 #   replacement
-pseq_rare <- rarefy_even_depth(pseq_alpha_filt, rngseed = 314)
+pseq_rare <- rarefy_even_depth(pseq_all_filt, rngseed = 314)
 # 88980 OTUs removed because they were no longer present after subsampling
 
 # For purposes of this file, I'm only going to look at (i) ALL samples and (ii)
 #   samples collected by the rotorod samplers:
 roto_rare <- subset_samples(pseq_rare, Year == 2019 & Sampler_Type == "Rotorod")
 
-saveRDS(pseq_rare, "its1_all_rare.rds")
-saveRDS(roto_rare, "roto_its1_rare.rds")
+saveRDS(pseq_rare, "outputs/its1_all_rare.rds")
+saveRDS(roto_rare, "outputs/roto_its1_rare.rds")
 

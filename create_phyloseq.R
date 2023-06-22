@@ -16,10 +16,10 @@ library(phyloseq)
 #   be in, etc.)
 
 # import the amplicon reads (250 b paired-end, Illumina):
-svs <- read_qza("its1-combined-filtered-itsx-fungi-mothur.qza")
+svs <- read_qza("files/its1-combined-filtered-itsx-fungi-mothur.qza")
 
 # import taxonomy (as determined by the mothur algorithm, separate file):
-taxonomy <- read_qza("taxonomy-its1-combined-mothur.qza")
+taxonomy <- read_qza("files/taxonomy-its1-combined-mothur.qza")
 taxonomy <- taxonomy$data
 
 # manually parse taxonomy:
@@ -37,7 +37,7 @@ tax_sep[to_gsub] <- lapply(tax_sep[to_gsub], gsub,
                            pattern = "unidentified", replacement = "")
 
 # import sample metadata:
-metadata <- read.table("ITS1_combined_metadata_2.txt", sep = "\t", header = TRUE)
+metadata <- read.table("files/ITS1_combined_metadata_2.txt", sep = "\t", header = TRUE)
 
 metadata$Date <- as.Date(parse_date_time(metadata$Date, orders = 'dmy'))
 
@@ -95,7 +95,7 @@ roto_its1 <- subset_samples(pseq_alpha, Year == 2019 & Sampler_Type == "Rotorod"
 burk2021_its1 <- subset_samples(pseq_alpha, Year == 2021 & Sampler_Type == "Burkard")
 
 # save objects for use in future scripts:
-saveRDS(pseq_its1, "its1_all_raw.rds")
-saveRDS(burk2019_its1, "burk2019_its1_raw.rds")
-saveRDS(roto_its1, "roto_its1_raw.rds")
-saveRDS(burk2021_its1, "burk2021_its1_raw.rds")
+saveRDS(pseq_its1, "outputs/its1_all_raw.rds")
+saveRDS(burk2019_its1, "outputs/burk2019_its1_raw.rds")
+saveRDS(roto_its1, "outputs/roto_its1_raw.rds")
+saveRDS(burk2021_its1, "outputs/burk2021_its1_raw.rds")
