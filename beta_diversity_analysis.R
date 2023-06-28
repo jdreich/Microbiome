@@ -7,62 +7,40 @@ library(ggplot2)
 library(reshape2)
 library(lubridate)
 library(phyloseq)
-library(ape)
-library(viridis)
 
 # set colour palette for plotting:
 colors <- c("#fd8c6e", "#78b4c6", "#7fca76", "#ac8bf8")
 
-
 # read in data set:
-all_reads <- readRDS("Phyloseq objects/its1_all_raw.rds")
+all_reads <- readRDS("outputs/its1_all_ra.rds")
 metadata <- sample_data(all_reads) %>% data.frame()
 
 # import rotorod metadata for weather analysis:
-roto_meta <- read_csv("Rotorod ITS1 all metadata.csv") %>% data.frame()
+roto_meta <- read_csv("files/Rotorod ITS1 all metadata.csv") %>% data.frame()
 # for merging with a phyloseq object, the metadata has to have rownames corresponding
 #  to sample ID:
 rownames(roto_meta) <- roto_meta$SampleID
 
 roto <- subset_samples(all_reads, Control == "No" & Sampler_Type == "Rotorod" &
                          !(is.na(Date)))
-burk19 <- subset_samples(all_reads, Control == "No" & Sampler_Type == "Burkard" &
-                           !(is.na(Date)) & Year == "2019")
-burk21 <- subset_samples(all_reads, Control == "No" & Sampler_Type == "Burkard" &
-                           !(is.na(Date)) & Year == "2021")
-
 
 # update rotorod phyloseq object with relevant metadata:
 sample_data(roto) <- roto_meta
-
-roto_Hellinger <- transform_sample_counts(roto,
-                                          function(x) sqrt(x / sum(x)))
-
-burk19_Hellinger <- transform_sample_counts(burk19,
-                                            function(x) sqrt(x / sum(x)))
-
-burk21_Hellinger <- transform_sample_counts(burk21,
-                                            function(x) sqrt(x / sum(x)))
-
-# filter out controls:
-#pseq_Hellinger_field <- subset_samples(pseq_Hellinger_all, 
-#                                       Crop_Type %in% c("Bean", "Canola", 
-#                                                        "Wheat"))
-#pseq_Hellinger_control <- subset_samples(pseq_Hellinger_all,
-#                                         !(Crop_Type %in% c("Bean", "Canola", 
-#                                                            "Wheat")))
-
-
-
-# Can use plot_ordination() for all other metrics as well:
-# Bray-Curtis:
-ord_bray <- ordinate(roto_Hellinger, method = "PCoA", distance = "bray")
 
 sample_data(roto_Hellinger)$Jday <- as.factor(sample_data(roto_Hellinger)$Jday)
 sample_data(roto_Hellinger)$Location <- factor(sample_data(roto_Hellinger)$Location,
                                                levels = c("Beaverlodge", "Lacombe",
                                                           "Brooks", "Lethbridge"))
 
+# Hellinger-transform read counts for subsequent analysis (this is one solution
+#   to the issue of compositional data):
+roto_Hellinger <- transform_sample_counts(roto,
+                                          function(x) sqrt(x / sum(x)))
+
+
+# Can use plot_ordination() for all other metrics as well:
+# calculate Bray-Curtis dissimilarity:
+ord_bray <- ordinate(roto_Hellinger, method = "PCoA", distance = "bray")
 
 # plot by Location to see how similar samples on same day are:
 p1 <- plot_ordination(roto_Hellinger, ord_bray, color = "Location") + 
@@ -84,33 +62,32 @@ p1 <- plot_ordination(roto_Hellinger, ord_bray, color = "Location") +
 p1$layers <- p1$layers[-1]
 p1 + geom_point(col = "darkslategrey", size = 5, shape = 21)
 
-#png(file="Burk ITS2/burk-its2-bray-curtis.png",
-#    width=650, height=450)
 
-ggsave("Ordination of Rotorod samplers ITS1.png", height = 3.5, width = 5)
+ggsave("outputs/Ordination of Rotorod samplers ITS1.png", height = 3.5, width = 5)
 
-# Run PermANOVA:
-
-# run adonis - must first include only complete cases:
+# Run PermANOVA, using vegan's adonis, and including environmental covariates:
+#   must first include only complete cases:
 sample_df <- data.frame(sample_data(roto_Hellinger))
-#sample_df_precip <- sample_df[complete.cases(sample_df[,-c(18:20)]), ]
-#pseq_precip <- subset_samples(pseq_Hellinger_field, SampleID %in% sample_df_precip$SampleID)
 
 bray_dist <- phyloseq::distance(roto_Hellinger, method = "bray")
 permanova <- adonis(bray_dist ~ Location + Precip + MeanT + MeanRH + week*Location, 
                     by = "margin",
                     data = sample_df, permutations = 10000)$aov.tab
 permanova
+
 perm_table <- permanova
+
+# test for dispersion:
 mod <- betadisper(bray_dist, sample_df$Location)
 dispersion <- anova(mod)
 dispersion
 plot(mod, hull = F, ellipse = T)
 TukeyHSD(mod)
 
-# 
+# perform a series of pairwise comparisons for differences in 
+#   communities - refer to Pat Schloss's Youtube videos on this:
 location <- c("Lethbridge", "Brooks", "Lacombe", "Beaverlodge")
-#locations2 <- c("Beaverlodge", "Lacombe", "Brooks", "Lethbridge")
+
 # distance matrix of all samples for subsetting:
 dist_mat <- data.frame(as.matrix(bray_dist))
 perma_p <- numeric()
