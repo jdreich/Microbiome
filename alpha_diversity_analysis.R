@@ -10,19 +10,7 @@ library(phyloseq)
 library(ggpubr)
 library(rstatix)
 
-colors <- c("#fd8c6e", "#78b4c6", "#7fca76", "#ac8bf8")
-
-# Refer to this link for a good overview of diversity: 
-# http://www.evolution.unibas.ch/walser/bacteria_community_analysis/2015-02-10_MBM_tutorial_combined.pdf
-
-
-
-# Shannon diversity plots of all data:
-# sample_data(pseq_rare)$SampleType <- ifelse(sample_data(pseq_rare)$Sample_or_Control == "Control",
-#                                             "Control", ifelse(sample_data(pseq_rare)$Sampler_Type == "Rotorod",
-#                                                               sample_data(pseq_rare)$Location,
-#                                                               sample_data(pseq_rare)$Crop_Type))
-
+# read in rarefied phyloseq object
 pseq_rare <- readRDS("outputs/its1_all_rare.rds")
 
 # reorder factors:
@@ -41,15 +29,13 @@ sample_data(pseq_rare)$GenericID <- factor(sample_data(pseq_rare)$GenericID,
 # remove 'ascospore' from controls prior to plotting
 pseq_rare_filt <- subset_samples(pseq_rare, !(GenericID == "Ascospore"))
 
+# this will be needed for plotting:
 facet_names <- c('Rotorod19' = "Rotorod '19",
                  'Burkard19' = "Burkard '19",
                  'Burkard21' = "Burkard '21",
                  'Control' = "Controls")
 
-# edit metadata file to change order of Location:
-#sample_data(pseq_rare_filt)$Location <- factor(sample_data(roto)$Location, 
-#                                          levels = c("Lethbridge", "Brooks",
-#                                                     "Lacombe", "Beaverlodge"))
+
 # get metadata file
 all_meta <- sample_data(pseq_rare) %>% 
   as_tibble()
@@ -63,27 +49,17 @@ alpha_metrics$SampleID <- rownames(alpha_metrics)
 all_meta <- merge(all_meta, alpha_metrics, by = "SampleID") 
 
 
-# reorder SampleType data:
-#roto_meta$SampleType <- factor(roto_meta$SampleType, 
-#                                  levels = c("Rotorod19", "Burkard19",
-#                                             "Burkard21", "Control"))
 
-
-# try to add statistics to boxplot; see:
-#  https://www.datanovia.com/en/blog/how-to-add-p-values-to-ggplot-facets/
+# statistical tests to add to plots:
 stat.test <- filter(all_meta, !(SampleType == "Control")) %>%
   group_by(SampleType) %>%
   tukey_hsd(Shannon ~ GenericID)
 stat.test
 
-#filter(roto_meta, SampleType == "Burkard19") %>% tukey_hsd(Shannon ~ GenericID)
-
+# prepare for plotting:
 stat.test <- stat.test %>% add_y_position()
-#ggboxplot(df, x = "dose", y = "len", fill = "#FC4E07", facet.by = "supp") +
-#  stat_pvalue_manual(stat.test, label = "p.adj.signif", tip.length = 0.01) +
-#  scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
 
-
+# plot all samples, with statistical tests, this takes a few seconds to plot:
 plot_richness(pseq_rare_filt, x = "GenericID", measures=c("Shannon")) +
   geom_boxplot(outlier.shape = NA, fill = NA) + 
   # geom_jitter(width = 0.2, height = 0) +
@@ -100,25 +76,17 @@ plot_richness(pseq_rare_filt, x = "GenericID", measures=c("Shannon")) +
   labs(y = "Shannon diversity index",
        x = NULL) 
 
-ggsave("ITS1 Shannon diversity all data sets.png", width = 6, height = 3.5)
-
-# analysis of Rotorod data set:
-plot_richness(roto_rare, x = "Location", measures=c("Shannon")) +
-  geom_boxplot(outlier.shape = NA, fill = NA) + 
-  #geom_jitter(width = 0.2, height = 0) +
-  theme_bw() + 
-  facet_wrap(~biweekly) +
-  theme(text = element_text(size = 16),
-        axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1),
-        strip.background = element_rect(colour="white", fill="white"))  + # remove panel border
-  labs(y = "Alpha Diversity Index") 
+# save file:
+ggsave("outputs/ITS1 Shannon diversity.png", width = 6, height = 3.5)
 
 
 
-############### ROTOROD ALPHA DIVERSITY ------------
-# focus on ROTOROD metadata file:
+
+### --------- ROTOROD ALPHA DIVERSITY ------------
+# focus on ROTOROD metadata file - this is the data set looking at
+#   different geographic locations:
 # edit metadata file to change order of Location:
-roto_rare <- readRDS("Phyloseq objects/roto_its1_rare.rds")
+roto_rare <- readRDS("outputs/roto_its1_rare.rds")
 sample_data(roto_rare)$Location <- factor(sample_data(roto_rare)$Location, 
                                           levels = c("Lethbridge", "Brooks",
                                                      "Lacombe", "Beaverlodge"))
@@ -135,17 +103,21 @@ roto_meta <- merge(roto_meta, alpha_metrics, by = "SampleID")
 # by = 0 indicates use rownames
 
 # 2) add weather variables:
-weather <- read_csv("Rotorod weather data 2019.csv")
+weather <- read_csv("files/Rotorod weather data 2019.csv")
 
-# filter out duplicates in rotorod data set:
+# filter out duplicates in rotorod data set (some samples were run in duplicate,
+#   and these are identified by having no date; for now we'll just remove these):
 roto_meta_filt <- filter(roto_meta, !is.na(Date)) %>% 
   droplevels()
+
+# ensure week is a factor
 weather$week <- factor(weather$week)
 
+# merge all data:
 roto_all <- merge(roto_meta_filt, weather, by = c("Location", "Date", "week", "biweekly",
                                                   "month"))
 
-write.csv(roto_all, "Rotorod ITS1 all metadata.csv", row.names = FALSE)
+# write.csv(roto_all, "files/Rotorod ITS1 all metadata.csv", row.names = FALSE)
 
 
 # summarize by week:
@@ -155,7 +127,8 @@ alpha_biweekly <- roto_all %>% group_by(Location, week) %>%
                    number = n()) %>% 
   ungroup()
 
-# plot alpha metrics - remove week 25, since it has few data points:
+# plot alpha metrics - remove week 25, since it has few data points;
+# looking at data grouped every 2 weeks
 filter(roto_all, !(week == "25")) %>% 
   ggplot(aes(x = biweekly, y = Shannon)) +
   geom_boxplot() + 
@@ -164,9 +137,7 @@ filter(roto_all, !(week == "25")) %>%
   theme_bw()
 
 
-# can set dodge width for line chart:
-# pd <- position_dodge(width = 0.4)
-
+#  try again, looking at every week:
 alpha_biweekly %>% #filter(., !(biweekly == "NA")) %>% 
   ggplot(aes(x = week, y = meanShannon#, col = Location
   )) +
@@ -182,7 +153,7 @@ alpha_biweekly %>% #filter(., !(biweekly == "NA")) %>%
   theme_bw() +
   theme(strip.background = element_blank())
 
-ggsave("Roto ITS1 Shannon diversity by location week.png", width = 5, height = 4)
+ggsave("outputs/Roto ITS1 Shannon diversity by location week.png", width = 5, height = 4)
 
 
 
@@ -204,51 +175,8 @@ to_test <- select(roto_summary, meanShannon, Location, week) %>%
   mutate(Location = as.factor(Location)) %>% 
   filter(week %in% c("27","28","29","30","31","32","33"))
 
-# must use an ungrouped data frame for this!!!!!
-# test whether diversity changes over time:
-res.aov <- anova_test(data = to_test, 
-                      dv = meanShannon, 
-                      wid = Location,
-                      within = week)
 
-get_anova_table(res.aov)
-
-# test whether diversity varies by location:
-# https://www.datanovia.com/en/lessons/anova-in-r/
-#ggboxplot(roto_all, x = "Location", y = "Shannon")
-
-model <- lm(Shannon~Location, data = roto_all) 
-ggqqplot(residuals(model))
-
-# test normality assumptions by Location:
-roto_all %>%
-  group_by(Location) %>%
-  shapiro_test(Shannon)
-
-# can also check qqplot by Location:
-ggqqplot(roto_all, "Shannon", facet.by = "Location")
-
-# perform statistical test for Shannon:
-res.aov <- roto_all %>% anova_test(Shannon ~ Location)
-res.aov
-
-# pairwise comparisons:
-pwc <- roto_all %>% tukey_hsd(Shannon ~ Location)
-pwc
-
-# repeat above for Chao1:
-chao.aov <- roto_all %>% anova_test(Chao1 ~ Location)
-roto_all %>% tukey_hsd(Chao1 ~ Location)
-
-# visualize:
-pwc <- pwc %>% add_xy_position(x = "Location")
-ggboxplot(roto_all, x = "Location", y = "Shannon") +
-  stat_pvalue_manual(pwc, hide.ns = TRUE) +
-  labs(
-    subtitle = get_test_label(res.aov, detailed = TRUE),
-    caption = get_pwc_label(pwc)
-  )
-
+# summarize weather data to do linear modeling of Diversity ~ Weather
 
 # summary table of relevant statistics:
 weather_summary <- weather %>% 
